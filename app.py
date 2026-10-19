@@ -98,20 +98,27 @@ def ask_gemini(history, question, data):
         contents.append({"role": role, "parts": [{"text": str(m.get("text", ""))[:2000]}]})
     contents.append({"role": "user",
                      "parts": [{"text": f"DATA:\n{data}\n\nQUESTION: {question}"}]})
-    body = {
-        "system_instruction": {"parts": [{"text": SYSTEM}]},
-        "contents": contents,
-        "tools": [{"google_search": {}}],  # web search for anime/channel/news
-    }
-    try:
-        r = requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent",
-            params={"key": GEMINI_KEY}, json=body, timeout=60)
-        j = r.json()
-        parts = j["candidates"][0]["content"]["parts"]
-        return "".join(p.get("text", "") for p in parts)
-    except Exception:
-        return "Oops, DexGPT couldn't get an answer. Check the Gemini key and try again."
+    base = {"system_instruction": {"parts": [{"text": SYSTEM}]}, "contents": contents}
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
+    last_error = "unknown error"
+    # try with web search first, then without it
+    for tools in ([{"google_search": {}}], None):
+        body = dict(base)
+        if tools:
+            body["tools"] = tools
+        try:
+            r = requests.post(url, params={"key": GEMINI_KEY}, json=body, timeout=60)
+            j = r.json()
+            if "error" in j:
+                last_error = j["error"].get("message", str(j["error"]))
+                print("GEMINI ERROR:", last_error, flush=True)
+                continue
+            parts = j["candidates"][0]["content"]["parts"]
+            return "".join(p.get("text", "") for p in parts)
+        except Exception as e:
+            last_error = str(e)
+            print("GEMINI EXCEPTION:", last_error, flush=True)
+    return f"DexGPT error: {last_error[:300]}"
 
 
 @app.post("/chat")
