@@ -141,7 +141,13 @@ def ask_gemini(history, question, data):
     last_error = "unknown error"
     for model in models:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-        for tools in ([{"google_search": {}}], None):
+        # if the message has a link, let Gemini read that page too
+        if re.search(r"https?://\S+", question):
+            variants = [[{"google_search": {}}, {"url_context": {}}],
+                        [{"url_context": {}}], None]
+        else:
+            variants = [[{"google_search": {}}], None]
+        for tools in variants:
             body = dict(base)
             if tools:
                 body["tools"] = tools
