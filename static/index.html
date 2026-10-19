@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DexGPT</title>
+<style>
+  :root {
+    --shell: #b3202a;
+    --shell-dark: #7d1219;
+    --screen: #dfeee6;
+    --ink: #14231c;
+    --lens: #2f9bff;
+    --bubble-user: #14231c;
+    --bubble-bot: #f6fbf8;
+    --accent: #ffcb05;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+    background: var(--shell-dark);
+    color: var(--ink);
+    display: flex; justify-content: center;
+  }
+  .dex {
+    width: 100%; max-width: 640px; height: 100%;
+    display: flex; flex-direction: column;
+    background: var(--shell);
+    padding: env(safe-area-inset-top, 0) 0 env(safe-area-inset-bottom, 0);
+  }
+  header { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+  .lens {
+    width: 38px; height: 38px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #bfe3ff, var(--lens) 55%, #0b4f9c);
+    border: 3px solid #fff; box-shadow: 0 0 0 3px var(--shell-dark);
+    flex: none;
+  }
+  header h1 { margin: 0; font-size: 22px; color: #fff; letter-spacing: .5px; }
+  header p { margin: 0; font-size: 12px; color: #ffd9dc; }
+  .screen {
+    flex: 1; min-height: 0; margin: 0 12px; padding: 12px;
+    background: var(--screen); border-radius: 14px;
+    border: 4px solid var(--shell-dark);
+    display: flex; flex-direction: column;
+  }
+  #log { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 88%; padding: 10px 13px; border-radius: 12px; line-height: 1.45;
+         white-space: pre-wrap; word-wrap: break-word; font-size: 15px; }
+  .user { align-self: flex-end; background: var(--bubble-user); color: #fff; }
+  .bot { align-self: flex-start; background: var(--bubble-bot); border: 1px solid #b9d3c5; }
+  .pics { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .pics img { height: 120px; max-width: 100%; border-radius: 6px; }
+  .pics img.art { height: 110px; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 10px; }
+  .chips button {
+    background: #fff; color: var(--ink); border: 1px solid #9fbfae;
+    border-radius: 999px; padding: 7px 12px; font-size: 13px; cursor: pointer;
+  }
+  form { display: flex; gap: 8px; padding: 12px; }
+  input {
+    flex: 1; min-width: 0; padding: 13px 14px; border-radius: 10px; border: 3px solid var(--shell-dark);
+    font-size: 16px; background: #fff;
+  }
+  form button {
+    background: var(--accent); color: var(--ink); font-weight: 700; border: 3px solid var(--shell-dark);
+    border-radius: 10px; padding: 0 18px; font-size: 15px; cursor: pointer;
+  }
+  button:focus-visible, input:focus-visible { outline: 3px solid var(--lens); outline-offset: 2px; }
+  button:disabled { opacity: .6; cursor: default; }
+</style>
+</head>
+<body>
+<div class="dex">
+  <header>
+    <div class="lens" aria-hidden="true"></div>
+    <div>
+      <h1>DexGPT</h1>
+      <p>Games, Pokédex, cards, anime</p>
+    </div>
+  </header>
+
+  <main class="screen">
+    <div id="log" aria-live="polite"></div>
+    <div class="chips" id="chips">
+      <button type="button">Stats for Charizard</button>
+      <button type="button">Best counters to Gengar</button>
+      <button type="button">Charizard cards and prices</button>
+      <button type="button">Build me a team of 6</button>
+    </div>
+  </main>
+
+  <form id="f">
+    <input id="i" placeholder="Ask DexGPT about Pokémon" autocomplete="off" aria-label="Message">
+    <button id="send">Send</button>
+  </form>
+</div>
+
+<script>
+const log = document.getElementById('log');
+const f = document.getElementById('f');
+const input = document.getElementById('i');
+const send = document.getElementById('send');
+const chips = document.getElementById('chips');
+let history = [];
+
+function add(text, cls) {
+  const d = document.createElement('div');
+  d.className = 'msg ' + cls;
+  d.textContent = text;
+  log.appendChild(d);
+  log.scrollTop = log.scrollHeight;
+  return d;
+}
+
+function addPics(el, urls, cls) {
+  if (!urls || !urls.length) return;
+  const row = document.createElement('div');
+  row.className = 'pics';
+  urls.forEach(u => {
+    const img = document.createElement('img');
+    img.src = u; img.alt = ''; img.loading = 'lazy';
+    if (cls) img.className = cls;
+    row.appendChild(img);
+  });
+  el.appendChild(row);
+}
+
+async function ask(q) {
+  chips.style.display = 'none';
+  add(q, 'user');
+  const wait = add('Scanning the Pokédex...', 'bot');
+  input.value = ''; send.disabled = true;
+  try {
+    const r = await fetch('/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: q, history })
+    });
+    const j = await r.json();
+    wait.textContent = j.reply;
+    addPics(wait, j.sprites, 'art');
+    addPics(wait, j.cards);
+    history.push({ role: 'user', text: q }, { role: 'model', text: j.reply });
+  } catch (e) {
+    wait.textContent = 'Could not reach the server. Check your connection and try again.';
+  }
+  send.disabled = false;
+  log.scrollTop = log.scrollHeight;
+}
+
+f.onsubmit = e => { e.preventDefault(); const q = input.value.trim(); if (q) ask(q); };
+chips.querySelectorAll('button').forEach(b => b.onclick = () => ask(b.textContent));
+add('Hi trainer! I\'m DexGPT. Ask me about any Pokémon, card, game, or team.', 'bot');
+</script>
+</body>
+  </html>
